@@ -7,6 +7,6 @@ authors = ["Andreas Fackler <AndreasFackler@gmx.de>"]
 repository = "https://github.com/poanetwork/hex_fmt"
 readme = "README.md"
 keywords = ["format", "hex", "display", "debug"]
-categories = ["value-formatting", "debugging"]
+categories = ["value-formatting", "development-tools::debugging"]
 
 [dependencies]
