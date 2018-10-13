@@ -39,13 +39,13 @@ impl<T: AsRef<[u8]>> Display for HexFmt<T> {
 
 impl<T: AsRef<[u8]>> LowerHex for HexFmt<T> {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        fmt(self.0.as_ref(), f, Case::Lower)
+        Lowercase::fmt(self.0.as_ref(), f)
     }
 }
 
 impl<T: AsRef<[u8]>> UpperHex for HexFmt<T> {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        fmt(self.0.as_ref(), f, Case::Upper)
+        Uppercase::fmt(self.0.as_ref(), f)
     }
 }
 
@@ -99,69 +99,85 @@ where
     }
 }
 
-fn fmt(bytes: &[u8], f: &mut Formatter, case: Case) -> Result {
-    // TODO: Respect `f.width()`, `f.align()` and `f.fill()`.
-    let precision = f.precision().unwrap_or(DEFAULT_PRECISION);
+trait Case {
+    fn fmt_byte(f: &mut Formatter, byte: u8) -> Result;
+    fn fmt_digit(f: &mut Formatter, digit: u8) -> Result;
 
-    // If the array is short enough, don't shorten it.
-    if 2 * bytes.len() <= precision {
-        for byte in bytes {
-            fmt_byte(f, *byte, case)?;
+    #[inline]
+    fn fmt(bytes: &[u8], f: &mut Formatter) -> Result {
+        // TODO: Respect `f.width()`, `f.align()` and `f.fill()`.
+        let precision = f.precision().unwrap_or(DEFAULT_PRECISION);
+
+        // If the array is short enough, don't shorten it.
+        if 2 * bytes.len() <= precision {
+            for byte in bytes {
+                Self::fmt_byte(f, *byte)?;
+            }
+            return Ok(());
         }
-        return Ok(());
-    }
 
-    // If the bytes don't fit and the ellipsis fills the maximum width, print only that.
-    if precision <= ELLIPSIS.len() {
-        return write!(f, "{:.*}", precision, ELLIPSIS);
-    }
+        // If the bytes don't fit and the ellipsis fills the maximum width, print only that.
+        if precision <= ELLIPSIS.len() {
+            return write!(f, "{:.*}", precision, ELLIPSIS);
+        }
 
-    // Compute the number of hex digits to display left and right of the ellipsis.
-    let num_hex_digits = precision.saturating_sub(ELLIPSIS.len());
-    let right = num_hex_digits / 2;
-    let left = num_hex_digits - right;
+        // Compute the number of hex digits to display left and right of the ellipsis.
+        let num_hex_digits = precision.saturating_sub(ELLIPSIS.len());
+        let right = num_hex_digits / 2;
+        let left = num_hex_digits - right;
 
-    // Print the bytes on the left.
-    for byte in &bytes[..(left / 2)] {
-        fmt_byte(f, *byte, case)?;
-    }
-    // If odd, print only the first hex digit of the next byte.
-    if left & 1 == 1 {
-        fmt_digit(f, bytes[left / 2] >> 4, case)?;
-    }
+        // Print the bytes on the left.
+        for byte in &bytes[..(left / 2)] {
+            Self::fmt_byte(f, *byte)?;
+        }
+        // If odd, print only the first hex digit of the next byte.
+        if left & 1 == 1 {
+            Self::fmt_digit(f, bytes[left / 2] >> 4)?;
+        }
 
-    // Print the ellipsis.
-    f.write_str(ELLIPSIS)?;
+        // Print the ellipsis.
+        f.write_str(ELLIPSIS)?;
 
-    // If `right` is odd, print the second hex digit of a byte.
-    if right & 1 == 1 {
-        fmt_digit(f, bytes[(bytes.len() - right / 2 - 1)] & 0x0f, case)?;
-    }
-    // Print the remaining bytes on the right.
-    for byte in &bytes[(bytes.len() - right / 2)..] {
-        fmt_byte(f, *byte, case)?;
-    }
-    Ok(())
-}
-
-fn fmt_byte(f: &mut Formatter, byte: u8, case: Case) -> Result {
-    match case {
-        Case::Upper => write!(f, "{:02X}", byte),
-        Case::Lower => write!(f, "{:02x}", byte),
+        // If `right` is odd, print the second hex digit of a byte.
+        if right & 1 == 1 {
+            Self::fmt_digit(f, bytes[(bytes.len() - right / 2 - 1)] & 0x0f)?;
+        }
+        // Print the remaining bytes on the right.
+        for byte in &bytes[(bytes.len() - right / 2)..] {
+            Self::fmt_byte(f, *byte)?;
+        }
+        Ok(())
     }
 }
 
-fn fmt_digit(f: &mut Formatter, digit: u8, case: Case) -> Result {
-    match case {
-        Case::Upper => write!(f, "{:1X}", digit),
-        Case::Lower => write!(f, "{:1x}", digit),
+#[derive(Clone, Copy)]
+struct Uppercase;
+
+impl Case for Uppercase {
+    #[inline]
+    fn fmt_byte(f: &mut Formatter, byte: u8) -> Result {
+        write!(f, "{:02X}", byte)
+    }
+
+    #[inline]
+    fn fmt_digit(f: &mut Formatter, digit: u8) -> Result {
+        write!(f, "{:1X}", digit)
     }
 }
 
-#[derive(Copy, Clone)]
-enum Case {
-    Upper,
-    Lower,
+#[derive(Clone, Copy)]
+struct Lowercase;
+
+impl Case for Lowercase {
+    #[inline]
+    fn fmt_byte(f: &mut Formatter, byte: u8) -> Result {
+        write!(f, "{:02x}", byte)
+    }
+
+    #[inline]
+    fn fmt_digit(f: &mut Formatter, digit: u8) -> Result {
+        write!(f, "{:1x}", digit)
+    }
 }
 
 #[cfg(test)]
