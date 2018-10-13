@@ -1,24 +1,45 @@
 //! # Formatting and shortening byte slices as hexadecimal strings
 //!
 //! This crate provides wrappers for byte slices and lists of byte slices that implement the
-//! standard formatting traits and print the bytes as a hexadecimal string, eliding from the middle
-//! if the length would exceed the `precision` format parameter.
+//! standard formatting traits and print the bytes as a hexadecimal string. It respects the
+//! alignment, width and precision parameters and applies padding and shortening.
 //!
 //! ```
-//! use hex_fmt::{HexFmt, HexList};
+//! # use hex_fmt::{HexFmt, HexList};
+//! let bytes: &[u8] = &[0x0a, 0x1b, 0x2c, 0x3d, 0x4e, 0x5f];
 //!
-//! assert_eq!("090a0b", &format!("{}", HexFmt(&[9u8, 10, 11])));
-//! let nine_to_f = [9u8, 10, 11, 12, 13, 14, 15];
-//! assert_eq!("090..0f", &format!("{:.7}", HexFmt(&nine_to_f)));
-//! assert_eq!("090..E0F", &format!("{:.8X}", HexFmt(&nine_to_f)));
-//! assert_eq!("090a..0e0f", &format!("{}", HexFmt(&nine_to_f)));
-//! assert_eq!("[4142, 4241]", &format!("{}", HexList(&[b"AB", b"BA"])));
-//! assert_eq!("[4A4B, 4B4A]", &format!("{:X}", HexList(&[b"JK", b"KJ"])));
+//! assert_eq!("0a1b..4e5f", &format!("{}", HexFmt(bytes)));
+//!
+//! // The default width is 10. Change it to apply padding or shortening.
+//! assert_eq!("0a..5f", &format!("{:6}", HexFmt(bytes)));
+//! assert_eq!("0a1b2c3d4e5f", &format!("{:12}", HexFmt(bytes)));
+//! assert_eq!("  0a1b2c3d4e5f  ", &format!("{:16}", HexFmt(bytes)));
+//!
+//! // The default alignment is centered. Use `<` or `>` to align left or right.
+//! assert_eq!("0a1b..", &format!("{:<6}", HexFmt(bytes)));
+//! assert_eq!("0a1b2c3d4e5f    ", &format!("{:<16}", HexFmt(bytes)));
+//! assert_eq!("..4e5f", &format!("{:>6}", HexFmt(bytes)));
+//! assert_eq!("    0a1b2c3d4e5f", &format!("{:>16}", HexFmt(bytes)));
+//!
+//! // Use e.g. `4.8` to set the minimum width to 4 and the maximum to 8.
+//! assert_eq!(" 12 ", &format!("{:4.8}", HexFmt([0x12])));
+//! assert_eq!("123456", &format!("{:4.8}", HexFmt([0x12, 0x34, 0x56])));
+//! assert_eq!("123..89a", &format!("{:4.8}", HexFmt([0x12, 0x34, 0x56, 0x78, 0x9a])));
+//!
+//! // If you prefer uppercase, use `X`.
+//! assert_eq!("0A1B..4E5F", &format!("{:X}", HexFmt(bytes)));
+//!
+//! // All of the above can be combined.
+//! assert_eq!("0A1B2C..", &format!("{:<4.8X}", HexFmt(bytes)));
+//!
+//! // With `HexList`, the parameters are applied to each entry.
+//! let list = &[[0x0a; 3], [0x1b; 3], [0x2c; 3]];
+//! assert_eq!("[0A.., 1B.., 2C..]", &format!("{:<4X}", HexList(list)));
 //! ```
 
-use std::fmt::{Debug, Display, Formatter, LowerHex, Result, UpperHex};
+use std::fmt::{Alignment, Debug, Display, Formatter, LowerHex, Result, UpperHex, Write};
 
-const DEFAULT_PRECISION: usize = 10;
+const DEFAULT_WIDTH: usize = 10;
 const ELLIPSIS: &str = "..";
 
 /// Wrapper for a byte array, whose `Debug`, `Display` and `LowerHex` implementations output
@@ -106,25 +127,43 @@ trait Case {
     #[inline]
     fn fmt(bytes: &[u8], f: &mut Formatter) -> Result {
         // TODO: Respect `f.width()`, `f.align()` and `f.fill()`.
-        let precision = f.precision().unwrap_or(DEFAULT_PRECISION);
+        let min_width = f.width().unwrap_or(0);
+        let max_width = f.precision().or_else(|| f.width()).unwrap_or(DEFAULT_WIDTH);
+        let align = f.align().unwrap_or(Alignment::Center);
 
         // If the array is short enough, don't shorten it.
-        if 2 * bytes.len() <= precision {
+        if 2 * bytes.len() <= max_width {
+            let fill = f.fill();
+            let missing = min_width.saturating_sub(2 * bytes.len());
+            let (left, right) = match align {
+                Alignment::Left => (0, missing),
+                Alignment::Right => (missing, 0),
+                Alignment::Center => (missing / 2, missing - missing / 2),
+            };
+            for _ in 0..left {
+                f.write_char(fill)?;
+            }
             for byte in bytes {
                 Self::fmt_byte(f, *byte)?;
+            }
+            for _ in 0..right {
+                f.write_char(fill)?;
             }
             return Ok(());
         }
 
         // If the bytes don't fit and the ellipsis fills the maximum width, print only that.
-        if precision <= ELLIPSIS.len() {
-            return write!(f, "{:.*}", precision, ELLIPSIS);
+        if max_width <= ELLIPSIS.len() {
+            return write!(f, "{:.*}", max_width, ELLIPSIS);
         }
 
         // Compute the number of hex digits to display left and right of the ellipsis.
-        let num_hex_digits = precision.saturating_sub(ELLIPSIS.len());
-        let right = num_hex_digits / 2;
-        let left = num_hex_digits - right;
+        let digits = max_width.saturating_sub(ELLIPSIS.len());
+        let (left, right) = match align {
+            Alignment::Left => (digits, 0),
+            Alignment::Right => (0, digits),
+            Alignment::Center => (digits - digits / 2, digits / 2),
+        };
 
         // Print the bytes on the left.
         for byte in &bytes[..(left / 2)] {
