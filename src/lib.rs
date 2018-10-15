@@ -8,7 +8,7 @@
 //! # use hex_fmt::{HexFmt, HexList};
 //! let bytes: &[u8] = &[0x0a, 0x1b, 0x2c, 0x3d, 0x4e, 0x5f];
 //!
-//! assert_eq!("0a1b..4e5f", &format!("{}", HexFmt(bytes)));
+//! assert_eq!("0a1b2c3d4e5f", &format!("{}", HexFmt(bytes)));
 //!
 //! // The default width is 10. Change it to apply padding or shortening.
 //! assert_eq!("0a..5f", &format!("{:6}", HexFmt(bytes)));
@@ -27,7 +27,7 @@
 //! assert_eq!("123..89a", &format!("{:4.8}", HexFmt([0x12, 0x34, 0x56, 0x78, 0x9a])));
 //!
 //! // If you prefer uppercase, use `X`.
-//! assert_eq!("0A1B..4E5F", &format!("{:X}", HexFmt(bytes)));
+//! assert_eq!("0A1B2C3D4E5F", &format!("{:X}", HexFmt(bytes)));
 //!
 //! // All of the above can be combined.
 //! assert_eq!("0A1B2C..", &format!("{:<4.8X}", HexFmt(bytes)));
@@ -39,7 +39,6 @@
 
 use std::fmt::{Alignment, Debug, Display, Formatter, LowerHex, Result, UpperHex, Write};
 
-const DEFAULT_WIDTH: usize = 10;
 const ELLIPSIS: &str = "..";
 
 /// Wrapper for a byte array, whose `Debug`, `Display` and `LowerHex` implementations output
@@ -47,24 +46,28 @@ const ELLIPSIS: &str = "..";
 pub struct HexFmt<T>(pub T);
 
 impl<T: AsRef<[u8]>> Debug for HexFmt<T> {
+    #[inline]
     fn fmt(&self, f: &mut Formatter) -> Result {
         LowerHex::fmt(self, f)
     }
 }
 
 impl<T: AsRef<[u8]>> Display for HexFmt<T> {
+    #[inline]
     fn fmt(&self, f: &mut Formatter) -> Result {
         LowerHex::fmt(self, f)
     }
 }
 
 impl<T: AsRef<[u8]>> LowerHex for HexFmt<T> {
+    #[inline]
     fn fmt(&self, f: &mut Formatter) -> Result {
         Lowercase::fmt(self.0.as_ref(), f)
     }
 }
 
 impl<T: AsRef<[u8]>> UpperHex for HexFmt<T> {
+    #[inline]
     fn fmt(&self, f: &mut Formatter) -> Result {
         Uppercase::fmt(self.0.as_ref(), f)
     }
@@ -74,38 +77,46 @@ impl<T: AsRef<[u8]>> UpperHex for HexFmt<T> {
 /// output shortened hexadecimal strings.
 pub struct HexList<T>(pub T);
 
-impl<T: Clone + IntoIterator> Debug for HexList<T>
+impl<T> Debug for HexList<T>
 where
+    T: Clone + IntoIterator,
     T::Item: AsRef<[u8]>,
 {
+    #[inline]
     fn fmt(&self, f: &mut Formatter) -> Result {
         LowerHex::fmt(self, f)
     }
 }
 
-impl<T: Clone + IntoIterator> Display for HexList<T>
+impl<T> Display for HexList<T>
 where
+    T: Clone + IntoIterator,
     T::Item: AsRef<[u8]>,
 {
+    #[inline]
     fn fmt(&self, f: &mut Formatter) -> Result {
         LowerHex::fmt(self, f)
     }
 }
 
-impl<T: Clone + IntoIterator> LowerHex for HexList<T>
+impl<T> LowerHex for HexList<T>
 where
+    T: Clone + IntoIterator,
     T::Item: AsRef<[u8]>,
 {
+    #[inline]
     fn fmt(&self, f: &mut Formatter) -> Result {
         let entries = self.0.clone().into_iter().map(HexFmt);
         f.debug_list().entries(entries).finish()
     }
 }
 
-impl<T: Clone + IntoIterator> UpperHex for HexList<T>
+impl<T> UpperHex for HexList<T>
 where
+    T: Clone + IntoIterator,
     T::Item: AsRef<[u8]>,
 {
+    #[inline]
     fn fmt(&self, f: &mut Formatter) -> Result {
         let mut iter = self.0.clone().into_iter();
         write!(f, "[")?;
@@ -126,9 +137,11 @@ trait Case {
 
     #[inline]
     fn fmt(bytes: &[u8], f: &mut Formatter) -> Result {
-        // TODO: Respect `f.width()`, `f.align()` and `f.fill()`.
         let min_width = f.width().unwrap_or(0);
-        let max_width = f.precision().or_else(|| f.width()).unwrap_or(DEFAULT_WIDTH);
+        let max_width = f
+            .precision()
+            .or_else(|| f.width())
+            .unwrap_or_else(usize::max_value);
         let align = f.align().unwrap_or(Alignment::Center);
 
         // If the array is short enough, don't shorten it.

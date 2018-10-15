@@ -5,10 +5,9 @@ standard formatting traits and print the bytes as a hexadecimal string. It respe
 alignment, width and precision parameters and applies padding and shortening.
 
 ```rust
-# use hex_fmt::{HexFmt, HexList};
 let bytes: &[u8] = &[0x0a, 0x1b, 0x2c, 0x3d, 0x4e, 0x5f];
 
-assert_eq!("0a1b..4e5f", &format!("{}", HexFmt(bytes)));
+assert_eq!("0a1b2c3d4e5f", &format!("{}", HexFmt(bytes)));
 
 // The default width is 10. Change it to apply padding or shortening.
 assert_eq!("0a..5f", &format!("{:6}", HexFmt(bytes)));
