@@ -37,7 +37,9 @@
 //! assert_eq!("[0A.., 1B.., 2C..]", &format!("{:<4X}", HexList(list)));
 //! ```
 
-use std::fmt::{Alignment, Debug, Display, Formatter, LowerHex, Result, UpperHex, Write};
+#![cfg_attr(not(test), no_std)]
+
+use core::fmt::{Alignment, Debug, Display, Formatter, LowerHex, Result, UpperHex, Write};
 
 const ELLIPSIS: &str = "..";
 
